@@ -29,7 +29,7 @@ CREATE TABLE profiles (
 );
 
 -- ============================================================
--- CHARITIES
+-- CHARITIES 
 -- ============================================================
 CREATE TABLE charities (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -255,3 +255,37 @@ BEGIN
   WHERE id = $1;
 END;
 $$ LANGUAGE plpgsql;
+
+
+-- Drop and recreate trigger function with proper security
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+DROP FUNCTION IF EXISTS handle_new_user();
+
+CREATE OR REPLACE FUNCTION handle_new_user()
+RETURNS TRIGGER SECURITY DEFINER SET search_path = public
+AS $$
+BEGIN
+  INSERT INTO public.profiles (id, full_name, email)
+  VALUES (
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'full_name', 'New User'),
+    NEW.email
+  )
+  ON CONFLICT (id) DO NOTHING;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION handle_new_user();
+
+
+INSERT INTO subscriptions (user_id, plan, status, amount_cents, charity_percentage)
+VALUES (
+  (SELECT id FROM profiles WHERE email = 'nalawalakasim711@gmail.com'),
+  'monthly',
+  'active',
+  1999,
+  10
+);
